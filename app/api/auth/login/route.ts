@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { verifyPin } from "@/lib/auth/pin";
-import { createSession, setSessionCookie } from "@/lib/auth/session";
+import { createSession } from "@/lib/auth/session";
 import { ROLE_HOME_ROUTES } from "@/lib/constants";
 
 export async function POST(request: NextRequest) {
@@ -37,11 +37,14 @@ export async function POST(request: NextRequest) {
     }
 
     const token = await createSession(user.id, user.workspaceId);
-    await setSessionCookie(token);
 
-    const homeRoute = ROLE_HOME_ROUTES[user.roleKey] || ROLE_HOME_ROUTES[user.role] || "/tasks";
+    const homeRoute =
+      ROLE_HOME_ROUTES[user.roleKey] ||
+      ROLE_HOME_ROUTES[user.role] ||
+      "/tasks";
 
-    return NextResponse.json({
+    // Set cookie langsung di response agar browser menerimanya
+    const response = NextResponse.json({
       ok: true,
       data: {
         user: {
@@ -55,6 +58,16 @@ export async function POST(request: NextRequest) {
         redirect: homeRoute,
       },
     });
+
+    response.cookies.set("session_token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+    });
+
+    return response;
   } catch (error) {
     console.error("Login error:", error);
     return NextResponse.json(
