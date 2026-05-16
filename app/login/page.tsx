@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState, useEffect, useCallback } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   Shield,
   Briefcase,
@@ -41,7 +41,6 @@ const ROLE_GROUP_CONFIG: Record<string, { label: string; icon: React.ElementType
 };
 
 function LoginContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const redirectTo = searchParams.get("redirect") || undefined;
 
@@ -65,10 +64,12 @@ function LoginContent() {
           if (key === "SUPERADMIN") continue;
 
           if (!grouped[key]) {
-            const config = ROLE_GROUP_CONFIG[user.role] ?? ROLE_GROUP_CONFIG[key] ?? {
-              label: user.department?.name || key,
-              icon: Wrench,
-            };
+            const config =
+              ROLE_GROUP_CONFIG[user.role] ??
+              ROLE_GROUP_CONFIG[key] ?? {
+                label: user.department?.name || key,
+                icon: Wrench,
+              };
             grouped[key] = {
               roleKey: key,
               label: config.label,
@@ -96,14 +97,11 @@ function LoginContent() {
     setError(null);
   }, []);
 
-  const handleSelectUser = useCallback(
-    (userId: string) => {
-      setSelectedUserId(userId);
-      setStep("pin");
-      setError(null);
-    },
-    [],
-  );
+  const handleSelectUser = useCallback((userId: string) => {
+    setSelectedUserId(userId);
+    setStep("pin");
+    setError(null);
+  }, []);
 
   const handlePinComplete = useCallback(
     async (pin: string) => {
@@ -113,13 +111,21 @@ function LoginContent() {
         body: JSON.stringify({ userId: selectedUserId, pin }),
       });
       const json = await res.json();
+
       if (!json.ok) {
         setError("PIN salah. Coba lagi.");
         throw new Error("Wrong PIN");
       }
-      router.push(redirectTo || json.data.redirect);
+
+      // Gunakan hard navigation (window.location.href) bukan router.push().
+      // Ini memastikan browser commit Set-Cookie dari login response
+      // sebelum request berikutnya (session check di layout) dikirim.
+      // router.push() adalah soft navigation — cookie belum tentu tersedia
+      // saat React langsung render layout baru dan fetch /api/auth/session.
+      const destination = redirectTo || json.data.redirect || "/tasks";
+      window.location.href = destination;
     },
-    [selectedUserId, redirectTo, router],
+    [selectedUserId, redirectTo]
   );
 
   const handleBack = useCallback(() => {
@@ -242,11 +248,13 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-muted-foreground">Memuat...</p>
-      </div>
-    }>
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          <p className="text-muted-foreground">Memuat...</p>
+        </div>
+      }
+    >
       <LoginContent />
     </Suspense>
   );
