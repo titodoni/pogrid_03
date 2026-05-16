@@ -1,6 +1,6 @@
-// Prisma config — supports Neon connection pooling
-// DATABASE_URL       = pooled URL (runtime queries via Neon pooler)
-// DATABASE_URL_UNPOOLED = direct URL (prisma migrate / seed)
+// Prisma v7 config
+// - Runtime connection: via PrismaPg adapter di lib/db/prisma.ts (DATABASE_URL)
+// - Migrate/seed connection: via datasource.url di sini (DATABASE_URL_UNPOOLED)
 import "dotenv/config";
 import { defineConfig } from "prisma/config";
 
@@ -11,6 +11,6 @@ export default defineConfig({
     seed: "tsx prisma/seed.ts",
   },
   datasource: {
-    url: process.env["DATABASE_URL_UNPOOLED"] ?? process.env["DATABASE_URL"],
+    url: process.env.DATABASE_URL_UNPOOLED ?? process.env.DATABASE_URL ?? "",
   },
 });
