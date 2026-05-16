@@ -3,30 +3,34 @@
 ## Current Phase Issues
 
 ```txt
-1. All route pages are placeholders with no data fetching or business logic.
-2. Auth/session system not implemented — (authenticated) layout uses hardcoded ADMIN role.
-3. Notification bell is a visual placeholder only (unread count hardcoded to 0).
-4. Notification drawer/sheet has not been built yet.
-5. RoleActionPanel is a visual placeholder — no real mutation connections.
-6. ItemDetailDrawer tabs (Masalah) renders basic problem data but has no role-based action controls.
-7. BottomNav does not have a role-aware session provider — role is passed as prop from layout.
-8. Touch target minimum (44px) has not been verified across all components.
-9. No mobile-safe-area padding for phone notches.
-10. No desktop layout adaptation — only mobile-first.
-11. Settings/flags page had a typo (text-muted-threshold) which was fixed.
+1. Session cookie management implemented — login/logout flow works.
+2. Proxy (middleware) uses cookie existence check only; full session validation happens in layout/API.
+3. Superadmin login at /superadmin requires workspace-scoped user — seed creates superadmin without workspaceId.
+4. Login page fetches /api/users which returns ALL workspace users; no multi-tenant isolation check yet.
+5. Profile PIN change uses PinPad component — still shows dots correctly when changing PIN.
+6. Notification bell still shows hardcoded 0 unread.
+7. Notification drawer/sheet not built yet.
+8. RoleActionPanel still a visual placeholder — no real mutation connections.
+9. BottomNav does not update reactively when role changes mid-session.
+10. No mobile-safe-area padding for phone notches.
+11. No desktop layout adaptation — only mobile-first.
+12. Superadmin login flow needs workspace lookup — currently hits /api/auth/login which expects userId.
 ```
 
-## Phase 3 Issues
+## Phase 4 Issues
 
 ```txt
-1. Session cookie management not implemented — no login/logout flow yet.
-2. Pusher env vars not set — Pusher will not work until PUSHER_APP_ID, PUSHER_KEY, etc. are configured.
-3. usePusherChannel dynamically imports pusher-js — no type definitions, ref-based approach avoids lint issues.
-4. No Sentry integration for mutation error monitoring.
-5. No rate limiting or PIN cooldown.
-6. No middleware for route protection yet (requires session system to be implemented first).
-7. executeMutation helper needs actual workflow handler implementations to be useful.
-8. useOptimisticMutation hook is generic — production workflow implementations will need specific validation.
+1. Superadmin login at /superadmin needs special handling — superadmin has no workspaceId.
+   Current /api/auth/login requires userId; superadmin page doesn't know the userId.
+   Fix needed: superadmin login should look up superadmin user or bypass workspace requirement.
+2. PIN cooldown implemented client-side (2s) but not server-side (no rate limiting).
+3. Forgot PIN WhatsApp number hardcoded to seed value — should come from workspace config.
+4. Superadmin route /superadmin is accessible without auth (proxy.ts allows it through).
+   The page itself does client-side validation but server-side guard is needed for API access.
+5. No middleware for role-based route redirects — proxy.ts only checks for cookie existence.
+6. Authenticated layout shows loading state while checking session — no flash of wrong content.
+7. usePusherChannel dynamically imports pusher-js — no type definitions, ref-based approach avoids lint issues.
+8. No Sentry integration for mutation error monitoring.
 ```
 
 ## Pre-existing Issues
@@ -34,17 +38,21 @@
 ```txt
 1. No test infrastructure set up.
 2. No Sentry integration.
-3. No rate limiting or PIN cooldown.
-4. Session management not implemented.
-5. No middleware for route protection.
+3. No server-side rate limiting or PIN cooldown.
+4. Pusher env vars not set for production — Pusher will not work until configured.
 ```
 
 ## Resolved Issues
 
 ```txt
-1. Fixed seed.ts Prisma.InputJsonValue type error (fromValue/toValue/metadata types).
-2. Fixed Prisma import path for client components — using browser.ts for browser-safe types.
-3. Removed unused imports across all components.
-4. Fixed use-pusher.ts ref access during render lint error.
-5. Fixed use-optimistic-mutation.ts circular dependency lint error.
+1. Fixed middleware.ts → proxy.ts migration for Next.js 16.
+2. Fixed useSearchParams() Suspense boundary in login page.
+3. Fixed PinPad component lint errors (Date.now during render, setState in useEffect).
+4. Fixed unused variables and any-type lint errors across API routes.
+5. Fixed Prisma client generation and type imports.
+6. Fixed seed.ts to use bcryptjs hashPin() for consistent PIN hashing.
+7. Fixed (authenticated)/layout.tsx to use real session data instead of hardcoded ADMIN.
+8. Previous issue 2 (Auth/session system) resolved — login/logout/profile/PIN change implemented.
+9. Previous issue 5 (unused setState variables in profile) resolved.
+10. Previous issue 12 (Settings/flags typo) already fixed.
 ```

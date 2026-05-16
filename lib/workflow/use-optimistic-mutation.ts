@@ -9,12 +9,17 @@ type PendingMutation<TInput> = {
   cancelled: boolean;
 };
 
+type ValidateResult =
+  | { valid: true }
+  | { valid: false; error: string };
+
 type UseOptimisticMutationOptions<TInput, TOutput> = {
   mutationFn: (input: TInput) => Promise<TOutput>;
   onSuccess?: (data: TOutput, input: TInput) => void;
   onError?: (error: Error, input: TInput) => void;
   onSettled?: () => void;
   undoTimeoutMs?: number;
+  validateInput?: (input: TInput) => ValidateResult;
 };
 
 type UseOptimisticMutationReturn<TInput> = {
@@ -39,6 +44,7 @@ export function useOptimisticMutation<TInput, TOutput = unknown>(
   options: UseOptimisticMutationOptions<TInput, TOutput>,
 ): UseOptimisticMutationReturn<TInput> {
   const optionsRef = useLatestRef(options);
+  const undoTimeoutMs = options.undoTimeoutMs ?? 5000;
 
   const pendingRef = useRef<PendingMutation<TInput> | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -84,7 +90,7 @@ export function useOptimisticMutation<TInput, TOutput = unknown>(
         action: {
           label: "Coba lagi",
           onClick: () => {
-            commitMutation.current(input);
+            commitMutation(input);
           },
         },
       });
@@ -96,6 +102,18 @@ export function useOptimisticMutation<TInput, TOutput = unknown>(
   const mutate = useCallback(
     (input: TInput) => {
       clearTimer();
+
+      const opts = optionsRef.current;
+      if (opts.validateInput) {
+        const validation = opts.validateInput(input);
+        if (!validation.valid) {
+          setIsError(true);
+          setError(new Error(validation.error));
+          toast.error(validation.error);
+          return;
+        }
+      }
+
       pendingRef.current = { input, committed: false, cancelled: false };
       latestInputRef.current = input;
       setPendingInput(input);
@@ -121,7 +139,7 @@ export function useOptimisticMutation<TInput, TOutput = unknown>(
         commitMutation(input);
       }, undoTimeoutMs);
     },
-    [clearTimer, commitMutation],
+    [clearTimer, commitMutation, undoTimeoutMs, optionsRef],
   );
 
   const cancel = useCallback(() => {

@@ -3,16 +3,16 @@
 ## Current Phase
 
 ```txt
-Phase: 03A_MUTATION_AUDIT_NOTIFICATION_PUSHER_INFRA + 03B_UNDO_OPTIMISTIC_MUTATION_ENGINE
+Phase: 04A_SERVER_AUTHORIZATION_ROLE_GUARDS + 04B_AUTH_PIN_PROFILE_SUPERADMIN
 Status: done
-Started At: 2026-05-16 14:30:00 +07
-Last Updated: 2026-05-16 15:45:00 +07
+Started At: 2026-05-16 17:00:00 +07
+Last Updated: 2026-05-16 19:30:00 +07
 ```
 
 ## Phase Goal
 
 ```txt
-Build shared mutation, audit, notification, realtime, and optimistic-update foundation needed by all workflow actions.
+Build secure server-side authorization guards and complete the POgrid PIN authentication foundation.
 ```
 
 ## Active Constraints
@@ -26,13 +26,14 @@ Build shared mutation, audit, notification, realtime, and optimistic-update foun
 - no uploads
 - no external client portal
 - no full business workflow yet
-- no QC/Delivery/Finance business logic yet
+- no Drafting/Purchasing/QC/Delivery/Finance workflow logic yet
 - PostgreSQL is source of truth
 - Prisma writes data
-- AuditLog stores permanent history
-- Notification stores persistent in-app notifications
-- Pusher broadcasts change events only (IDs/metadata, not full objects)
-- TanStack Query invalidates/refetches on Pusher events
+- PINs hashed with bcryptjs (never plaintext)
+- Sessions never expire; logout is explicit only
+- Superadmin hidden from public login
+- Staff PIN = 4 digits, Superadmin PIN = 6 digits
+- Next.js 16 proxy convention (not middleware)
 ```
 
 ## Blockers
@@ -41,73 +42,74 @@ Build shared mutation, audit, notification, realtime, and optimistic-update foun
 None.
 ```
 
-## Phase 3 Results
+## Phase 4 Results
 
 ```txt
-Phase 3A completed:
-- lib/db/prisma.ts — Prisma Client singleton (server-side)
-- lib/workflow/mutation-result.ts — Standard MutationResult<T> type with successResult/failureResult helpers
-- lib/workflow/mutation-wrapper.ts — executeMutation() server wrapper with session validation, role guard, audit log, notification, and Pusher broadcast
-- lib/workflow/errors.ts — MutationError hierarchy (AuthError, PermissionError, ValidationError, NotFoundError, ConflictError, ProgressDecreaseError) with Bahasa error messages
-- lib/auth/session.ts — validateSession() and requireSession() server-side helpers reading httpOnly cookie
-- lib/auth/role-guard.ts — checkRole() and assertRole() server-side role/permission guard
-- lib/audit/audit-log.ts — createAuditLog() helper with known action map
-- lib/notifications/notification.ts — createNotification() and createNotifications() helpers
-- lib/realtime/events.ts — PUSHER_EVENTS enum, typed payload interfaces, PUSHER_CHANNELS channel builders
-- lib/realtime/pusher-server.ts — broadcastEvent() server-side Pusher helper with channel routing
-- lib/realtime/index.ts, lib/audit/index.ts, lib/notifications/index.ts, lib/auth/index.ts, lib/workflow/index.ts, lib/queries/index.ts — barrel exports
+Phase 4A completed:
+- lib/auth/guards.ts — 14 permission guards (requireSession, requireRole, requireAdmin,
+  requireSuperadmin, requireFinance, requireQC, requireDelivery, requireOperatorDepartment,
+  assertCanViewItem, assertCanMutateItemStage, assertCanManageUsers, assertCanManageClients,
+  assertCanViewAnalytics, assertCanResolveProblem)
+- Guards use typed AuthError/PermissionError from workflow/errors
+- Unauthorized = no valid session; Forbidden = valid session but insufficient role
+- Superadmin bypasses all role checks
+- Admin override pattern established (Admin passes all guards)
 
-Phase 3B completed:
-- Installed @tanstack/react-query, pusher (server), pusher-js (client)
-- components/providers/query-provider.tsx — QueryClientProvider wrapper with standard defaults
-- app/providers.tsx — Client-side Providers wrapper (QueryProvider)
-- app/layout.tsx — Updated to include Providers
-- lib/queries/keys.ts — All standard query keys (session, currentUser, tasks, item, po, poList, board, notifications, finance, dashboard, problems, auditLog, etc.)
-- lib/queries/invalidation-map.ts — Invalidation handlers for every Pusher event type
-- components/hooks/use-pusher.ts — usePusherChannel() client hook subscribing to workspace/po/item/user/role channels, auto-invalidating queries on events
-- lib/workflow/use-optimistic-mutation.ts — useOptimisticMutation() hook with 5-second undo toast, delayed commit, cancel, error state, and retry
-
-Tooling installed:
-- npm packages: @tanstack/react-query, pusher, pusher-js
-
-Lint: No errors, no warnings.
-TypeScript: Compiles cleanly.
-Build: Compiled successfully (first build), all 20 routes generated.
+Phase 4B completed:
+- lib/auth/pin.ts — hashPin(), verifyPin() using bcryptjs, generateStaffPin() for memorable 4-digit PINs
+- lib/auth/session.ts — createSession(), destroySession(), setSessionCookie(), clearSessionCookie(),
+  generateSessionToken(), validateSession(), requireSession() with AuthError
+- proxy.ts — Route protection via Next.js 16 proxy convention; redirects unauthenticated requests to /login
+- app/api/auth/login/route.ts — PIN verification and session creation
+- app/api/auth/logout/route.ts — Session destruction and cookie clearing
+- app/api/auth/change-pin/route.ts — Self PIN change with digit validation (4/6 digits) + audit log
+- app/api/auth/reset-pin/route.ts — Admin PIN reset with generateStaffPin() + audit log
+- app/api/auth/session/route.ts — Session check for client-side validation
+- app/api/users/route.ts — List active users by roleKey/departmentId (excludes SUPERADMIN)
+- components/pin-pad.tsx — Reusable numeric PIN pad with shake animation, cooldown, backspace
+- app/login/page.tsx — Full 3-step login flow: role icons → user list → PIN pad, Lupa PIN WhatsApp link
+- app/superadmin/page.tsx — Hidden /superadmin route with 6-digit PIN login
+- app/(authenticated)/profile/page.tsx — Profile with name display, PIN change, logout
+- app/(authenticated)/layout.tsx — Real session check from /api/auth/session instead of hardcoded ADMIN
+- prisma/seed.ts — Updated to use bcryptjs hashPin() from pin module
+- app/globals.css — Added animate-shake keyframe for wrong PIN animation
 ```
 
 ## Verified
 
 ```txt
-npm run lint — passes (no errors)
+npm run lint — passes (no errors, no warnings)
 npx tsc --noEmit — passes (no errors)
-npm run build — compiled successfully (20 routes)
+npm run build — compiled successfully (26 routes)
 ```
 
-## Files Created in Phase 3
+## Files Created in Phase 4
 
 ```
-lib/db/prisma.ts
+lib/auth/pin.ts
+lib/auth/guards.ts
+proxy.ts
+components/pin-pad.tsx
+app/api/auth/login/route.ts
+app/api/auth/logout/route.ts
+app/api/auth/change-pin/route.ts
+app/api/auth/reset-pin/route.ts
+app/api/auth/session/route.ts
+app/api/users/route.ts
+```
+
+## Files Modified in Phase 4
+
+```
 lib/auth/session.ts
-lib/auth/role-guard.ts
 lib/auth/index.ts
-lib/workflow/mutation-result.ts
-lib/workflow/mutation-wrapper.ts
-lib/workflow/errors.ts
-lib/audit/audit-log.ts
-lib/audit/index.ts
-lib/notifications/notification.ts
-lib/notifications/index.ts
-lib/realtime/events.ts
-lib/realtime/pusher-server.ts
-lib/realtime/index.ts
-lib/queries/keys.ts
-lib/queries/invalidation-map.ts
-lib/queries/index.ts
-lib/workflow/use-optimistic-mutation.ts
-lib/workflow/index.ts
-components/providers/query-provider.tsx
-components/providers/index.ts
-components/hooks/use-pusher.ts
-components/hooks/index.ts
-app/providers.tsx
+app/login/page.tsx
+app/superadmin/page.tsx
+app/(authenticated)/layout.tsx
+app/(authenticated)/profile/page.tsx
+prisma/seed.ts
+app/globals.css
+app/api/auth/change-pin/route.ts
+app/api/auth/reset-pin/route.ts
+app/api/users/route.ts
 ```

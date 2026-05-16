@@ -1,5 +1,4 @@
 import "dotenv/config";
-import { scryptSync } from "node:crypto";
 import { PrismaPg } from "@prisma/adapter-pg";
 import {
   ActorType,
@@ -17,6 +16,7 @@ import {
   UrgencyLevel,
   UserRole,
 } from "../app/generated/prisma/client";
+import { hashPin } from "../lib/auth/pin";
 
 const connectionString = process.env.DATABASE_URL;
 
@@ -26,12 +26,6 @@ if (!connectionString) {
 
 const adapter = new PrismaPg({ connectionString });
 const prisma = new PrismaClient({ adapter });
-
-const pinSalt = "pogrid-demo-seed-v1";
-
-function hashPin(pin: string) {
-  return `scrypt:${pinSalt}:${scryptSync(pin, pinSalt, 32).toString("hex")}`;
-}
 
 function daysFromNow(days: number) {
   const date = new Date();
