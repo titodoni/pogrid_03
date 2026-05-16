@@ -1,0 +1,387 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  SUPERADMIN
+  ADMIN
+  OWNER
+  MANAGER
+  SALES
+  QC
+  DELIVERY
+  FINANCE
+  DRAFTER
+  PURCHASING
+  OPERATOR
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+}
+
+enum ItemStatus {
+  DRAFTING
+  PURCHASING
+  PRODUCTION
+  QC
+  DELIVERY
+  DONE
+}
+
+enum ItemSource {
+  ORIGINAL
+  REWORK
+  RETURN
+}
+
+enum DrawingStatus {
+  PENDING
+  APPROVED
+  REDRAW_REQUESTED
+}
+
+enum PurchasingMilestone {
+  NOT_STARTED
+  ORDER_PLACED
+  VENDOR_CONFIRMED
+  MATERIAL_ARRIVED
+}
+
+enum ReworkType {
+  MINOR
+  MAJOR
+}
+
+enum ReworkReason {
+  DIMENSIONS_OUT_OF_SPEC
+  SURFACE_FINISHING_DEFECT
+  CRACK_OR_FRACTURE
+  WRONG_MATERIAL
+  OTHER
+}
+
+enum InvoiceStatus {
+  PENDING
+  INVOICED
+  PAID
+}
+
+enum UrgencyLevel {
+  NORMAL
+  ORANGE
+  RED
+  BLOOD_RED
+}
+
+enum ProblemCategory {
+  MATERIAL_NOT_ARRIVED
+  MATERIAL_MISMATCH
+  MACHINE_TOOL_FAILURE
+  OPERATOR_UNAVAILABLE
+  DRAWING_SPEC_UNCLEAR
+  DRAWING_REDRAW
+  PRODUCTION_BEFORE_PURCHASING_COMPLETE
+  OTHER
+}
+
+enum AuditAction {
+  PROGRESS_UPDATE
+  STAGE_ADVANCE
+  ADMIN_OVERRIDE
+  QC_PASS
+  QC_MINOR_FAIL
+  QC_MAJOR_FAIL
+  REWORK_SPAWNED
+  RETURN_SPAWNED
+  INVOICE_UPDATE
+  EDIT_PO_FIELD
+  FLAG_ESCALATE
+  DELETE_PO
+  PROBLEM_REPORTED
+  PROBLEM_RESOLVED
+  PIN_RESET
+  SELF_PIN_CHANGE
+  USER_CREATED
+  USER_TOGGLED
+}
+
+model Workspace {
+  id                  String            @id @default(cuid())
+  name                String
+  logoUrl             String?
+  primaryColor        String            @default("#14B8A6")
+  adminWhatsAppNumber String?
+  poNumberTemplate    String            @default("PO-{YYYY}-{SEQ}")
+  orangeThresholdDays Int               @default(7)
+  redThresholdDays    Int               @default(3)
+  billingStatus       String            @default("ACTIVE")
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  departments         Department[]
+  users               User[]
+  sessions            Session[]
+  clients             Client[]
+  productionOrders    ProductionOrder[]
+  items               Item[]
+  itemProgress        ItemProgress[]
+  problems            Problem[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+
+  @@index([billingStatus])
+}
+
+model Department {
+  id              String         @id @default(cuid())
+  workspaceId     String
+  name            String
+  roleKey         String
+  stageOrder      Int
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  workspace       Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  users           User[]
+  requiredByItems Item[]         @relation("ItemRequiredDepartments")
+  itemProgress    ItemProgress[]
+
+  @@unique([workspaceId, name])
+  @@unique([workspaceId, roleKey])
+  @@unique([workspaceId, stageOrder])
+  @@index([workspaceId, isActive])
+}
+
+model User {
+  id                      String            @id @default(cuid())
+  workspaceId             String?
+  departmentId            String?
+  name                    String
+  role                    UserRole
+  roleKey                 String
+  pinHash                 String
+  isActive                Boolean           @default(true)
+  lastLoginAt             DateTime?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  workspace               Workspace?        @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  department              Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  sessions                Session[]
+  createdProductionOrders ProductionOrder[] @relation("ProductionOrderCreatedBy")
+  itemProgressUpdates     ItemProgress[]    @relation("ItemProgressLastUpdatedBy")
+  reportedProblems        Problem[]         @relation("ProblemReportedBy")
+  resolvedProblems        Problem[]         @relation("ProblemResolvedBy")
+  targetNotifications     Notification[]    @relation("NotificationTargetUser")
+  auditLogs               AuditLog[]        @relation("AuditLogActor")
+
+  @@index([workspaceId, roleKey, isActive])
+  @@index([departmentId])
+}
+
+model Session {
+  id               String    @id @default(cuid())
+  userId           String
+  workspaceId      String
+  sessionTokenHash String    @unique
+  createdAt        DateTime  @default(now())
+  lastSeenAt       DateTime  @default(now())
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace        Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([workspaceId])
+}
+
+model Client {
+  id               String            @id @default(cuid())
+  workspaceId      String
+  name             String
+  contact          String?
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  workspace        Workspace         @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  productionOrders ProductionOrder[]
+
+  @@unique([workspaceId, name])
+  @@index([workspaceId, isActive])
+}
+
+model ProductionOrder {
+  id                 String         @id @default(cuid())
+  workspaceId        String
+  clientId           String
+  internalPoNumber   String
+  clientPoNumber     String?
+  poDate             DateTime
+  dueDate            DateTime?
+  notes              String?
+  manualUrgencyLevel UrgencyLevel?
+  isVendorJob        Boolean        @default(false)
+  createdByUserId    String
+  deletedAt          DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  workspace          Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  client             Client         @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  createdBy          User           @relation("ProductionOrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  items              Item[]
+  notifications      Notification[]
+
+  @@unique([workspaceId, internalPoNumber])
+  @@index([workspaceId, dueDate])
+  @@index([workspaceId, deletedAt])
+  @@index([clientId])
+  @@index([createdByUserId])
+}
+
+model Item {
+  id                   String              @id @default(cuid())
+  workspaceId          String
+  productionOrderId    String
+  parentItemId         String?
+  name                 String
+  specification        String?
+  quantity             Int
+  unit                 String              @default("pcs")
+  status               ItemStatus          @default(DRAFTING)
+  source               ItemSource          @default(ORIGINAL)
+  reworkType           ReworkType?
+  reworkReason         ReworkReason?
+  reworkReasonNote     String?
+  isRework             Boolean             @default(false)
+  isReturn             Boolean             @default(false)
+  drawingStatus        DrawingStatus       @default(PENDING)
+  drawingRevisionCount Int                 @default(0)
+  drawingApprovedAt    DateTime?
+  purchasingMilestone  PurchasingMilestone @default(NOT_STARTED)
+  qcPassedAt           DateTime?
+  deliveredAt          DateTime?
+  invoiceStatus        InvoiceStatus       @default(PENDING)
+  draftingStartedAt    DateTime?
+  purchasingStartedAt  DateTime?
+  productionStartedAt  DateTime?
+  qcStartedAt          DateTime?
+  deliveryStartedAt    DateTime?
+  doneAt               DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  workspace            Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  productionOrder      ProductionOrder     @relation(fields: [productionOrderId], references: [id], onDelete: Restrict)
+  parentItem           Item?               @relation("ItemLineage", fields: [parentItemId], references: [id], onDelete: Restrict)
+  childItems           Item[]              @relation("ItemLineage")
+  requiredDepartments  Department[]        @relation("ItemRequiredDepartments")
+  progress             ItemProgress[]
+  problems             Problem[]
+  notifications        Notification[]
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, invoiceStatus])
+  @@index([productionOrderId])
+  @@index([parentItemId])
+  @@index([isRework])
+  @@index([isReturn])
+}
+
+model ItemProgress {
+  id                  String     @id @default(cuid())
+  workspaceId         String
+  itemId              String
+  departmentId        String
+  progressValue       Int        @default(0)
+  completedQuantity   Int?
+  startedAt           DateTime?
+  completedAt         DateTime?
+  lastUpdatedByUserId String?
+  lastUpdatedAt       DateTime?
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+  workspace           Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  item                Item       @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  department          Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  lastUpdatedBy       User?      @relation("ItemProgressLastUpdatedBy", fields: [lastUpdatedByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([itemId, departmentId])
+  @@index([workspaceId])
+  @@index([departmentId])
+  @@index([lastUpdatedByUserId])
+}
+
+model Problem {
+  id               String          @id @default(cuid())
+  workspaceId      String
+  itemId           String
+  category         ProblemCategory
+  note             String?
+  reportedByUserId String?
+  reporterType     ActorType
+  isResolved       Boolean         @default(false)
+  resolvedByUserId String?
+  resolutionNote   String?
+  resolvedAt       DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  workspace        Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  item             Item            @relation(fields: [itemId], references: [id], onDelete: Restrict)
+  reportedBy       User?           @relation("ProblemReportedBy", fields: [reportedByUserId], references: [id], onDelete: SetNull)
+  resolvedBy       User?           @relation("ProblemResolvedBy", fields: [resolvedByUserId], references: [id], onDelete: SetNull)
+  notifications    Notification[]
+
+  @@index([workspaceId, isResolved])
+  @@index([itemId])
+  @@index([reportedByUserId])
+  @@index([resolvedByUserId])
+}
+
+model Notification {
+  id            String           @id @default(cuid())
+  workspaceId   String
+  targetUserId  String?
+  targetRoleKey String?
+  type          String
+  title         String
+  body          String
+  poId          String?
+  itemId        String?
+  problemId     String?
+  readAt        DateTime?
+  createdAt     DateTime         @default(now())
+  workspace     Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  targetUser    User?            @relation("NotificationTargetUser", fields: [targetUserId], references: [id], onDelete: Cascade)
+  po            ProductionOrder? @relation(fields: [poId], references: [id], onDelete: Cascade)
+  item          Item?            @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  problem       Problem?         @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, targetRoleKey, readAt])
+  @@index([targetUserId, readAt])
+  @@index([poId])
+  @@index([itemId])
+  @@index([problemId])
+}
+
+model AuditLog {
+  id          String      @id @default(cuid())
+  workspaceId String
+  actorUserId String?
+  actorType   ActorType
+  action      AuditAction
+  entityType  String
+  entityId    String
+  fromValue   Json?
+  toValue     Json?
+  metadata    Json?
+  createdAt   DateTime    @default(now())
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Restrict)
+  actorUser   User?       @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, action])
+  @@index([entityType, entityId])
+  @@index([actorUserId])
+}
