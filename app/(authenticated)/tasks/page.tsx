@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "use client";
+
 import { useEffect, useState, useCallback } from "react";
 import { AlertCircle, CheckCircle2 } from "lucide-react";
 import { Card } from "@/components/ui/card";
