@@ -130,7 +130,7 @@ export function ItemTaskCard({ item, onClick, expanded = false }: ItemTaskCardPr
           <div className="flex items-center gap-1.5">
             <AlertTriangle className="h-3.5 w-3.5 text-orange-500 shrink-0" />
             <span className="text-xs text-orange-600 font-medium">
-              Masalah: {activeProblems.map((p) => p.description).join("; ")}
+              Masalah: {activeProblems.map((p) => p.note ?? p.category).join("; ")}
             </span>
           </div>
         )}
