@@ -2,9 +2,8 @@
 
 import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import { differenceInHours, differenceInDays, isPast, isToday } from "date-fns";
-import { Plus, Search, AlertTriangle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { differenceInDays, isPast, isToday } from "date-fns";
+import { Search, AlertTriangle } from "lucide-react";
 
 const STAGE_ABBR: Record<string, string> = {
   DRAFTING: "DRFT",
@@ -37,7 +36,7 @@ function aggregateProgress(items: any[]) {
 
 function POListCard({ po }: { po: any }) {
   const items: any[] = po.items ?? [];
-  const leadItem = items.find((i) => i.status !== "DONE") ?? items[0];
+  const leadItem = items.find((i: any) => i.status !== "DONE") ?? items[0];
   const extraCount = items.length - 1;
   const progress = aggregateProgress(items);
   const activeProblems = items.flatMap((i: any) => (i.problems ?? []).filter((p: any) => !p.isResolved));
@@ -45,10 +44,9 @@ function POListCard({ po }: { po: any }) {
   const dueDate = po.dueDate ? new Date(po.dueDate) : null;
   const now = new Date();
   const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate);
-  const hoursLate = isOverdue ? Math.abs(differenceInHours(now, dueDate!)) : null;
   const daysLate = isOverdue ? Math.abs(differenceInDays(now, dueDate!)) : null;
 
-  const isDone = items.every((i) => i.status === "DONE");
+  const isDone = items.every((i: any) => i.status === "DONE");
   const statusLabel = isDone ? "SELESAI" : isOverdue ? "TERLAMBAT" : "AKTIF";
   const statusClass = isDone
     ? "text-green-600"
@@ -56,17 +54,14 @@ function POListCard({ po }: { po: any }) {
     ? "text-red-500"
     : "text-blue-500";
 
-  // Unique active stages
-  const activeStages = [...new Set(items.filter((i) => i.status !== "DONE").map((i) => i.status))];
+  const activeStages = [...new Set(items.filter((i: any) => i.status !== "DONE").map((i: any) => i.status))];
   const allStages = ["DRAFTING", "PURCHASING", "PRODUCTION", "QC", "DELIVERY"];
   const stagesToShow = isDone ? [] : allStages.filter((s) => activeStages.includes(s));
-
   const barColor = isOverdue ? "bg-red-500" : isDone ? "bg-green-500" : "bg-blue-500";
 
   return (
     <Link href={`/po/${po.id}`} className="block">
       <div className="bg-card border border-border rounded-xl px-4 pt-4 pb-3 space-y-2 hover:shadow-md transition-shadow">
-        {/* Row 1: title + status */}
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
@@ -80,8 +75,6 @@ function POListCard({ po }: { po: any }) {
           </div>
           <span className={`text-xs font-bold shrink-0 ${statusClass}`}>{statusLabel}</span>
         </div>
-
-        {/* Row 2: PO num · client · delay */}
         <div className="flex items-center gap-1.5 flex-wrap text-xs">
           <span className="text-muted-foreground">{po.internalPoNumber}</span>
           {po.client?.name && (
@@ -94,8 +87,6 @@ function POListCard({ po }: { po: any }) {
             <span className="font-semibold text-red-500">{daysLate} hari terlambat</span>
           )}
         </div>
-
-        {/* Row 3: Progress */}
         <div className="space-y-1">
           <div className="flex items-center justify-between">
             <span className="text-xs text-muted-foreground">Progress</span>
@@ -110,8 +101,6 @@ function POListCard({ po }: { po: any }) {
             />
           </div>
         </div>
-
-        {/* Row 4: Stage dot pills */}
         {stagesToShow.length > 0 && (
           <div className="flex items-center gap-2 flex-wrap">
             {stagesToShow.map((s) => (
@@ -122,8 +111,6 @@ function POListCard({ po }: { po: any }) {
             ))}
           </div>
         )}
-
-        {/* Row 5: Problem warning */}
         {activeProblems.length > 0 && (
           <div className="flex items-center gap-2 rounded-lg bg-yellow-50 border border-yellow-200 px-3 py-2">
             <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
@@ -180,7 +167,6 @@ export default function POPage() {
         <div className="flex gap-2">
           {[1, 2, 3, 4].map((i) => <div key={i} className="h-8 w-16 rounded-full bg-muted animate-pulse" />)}
         </div>
-        <div className="h-12 rounded-xl bg-muted animate-pulse" />
         {[1, 2, 3].map((i) => <div key={i} className="h-36 rounded-xl bg-muted animate-pulse" />)}
       </div>
     );
@@ -217,17 +203,6 @@ export default function POPage() {
           </button>
         ))}
       </div>
-
-      {/* CTA button */}
-      <Link href="/po/new" className="block">
-        <button
-          type="button"
-          className="w-full h-12 rounded-xl bg-foreground text-background font-semibold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
-        >
-          <Plus className="h-4 w-4" />
-          Buat PO Baru
-        </button>
-      </Link>
 
       {/* List */}
       {filtered.length === 0 ? (
