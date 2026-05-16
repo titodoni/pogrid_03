@@ -1,13 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { differenceInDays, isPast, isToday } from "date-fns";
+import {
+  differenceInDays,
+  differenceInHours,
+  isPast,
+  isToday,
+  isTomorrow,
+  isAfter,
+  subDays,
+  startOfMonth,
+  format,
+} from "date-fns";
 import { id as idLocale } from "date-fns/locale";
-import { formatDistanceToNow } from "date-fns";
-import { AlertCircle, Clock, TrendingUp, AlertTriangle } from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { ChevronRight, X, AlertTriangle, Clock } from "lucide-react";
 
 const PROBLEM_LABEL: Record<string, string> = {
   MATERIAL_NOT_ARRIVED: "Material belum tiba",
@@ -20,192 +27,331 @@ const PROBLEM_LABEL: Record<string, string> = {
   OTHER: "Lainnya",
 };
 
+type Period = "month" | "7d" | "all";
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 11) return "Selamat pagi";
+  if (h < 15) return "Selamat siang";
+  if (h < 18) return "Selamat sore";
+  return "Selamat malam";
+}
+
+function filterByPeriod(orders: any[], period: Period) {
+  const now = new Date();
+  if (period === "7d") {
+    const cutoff = subDays(now, 7);
+    return orders.filter((o) => isAfter(new Date(o.createdAt), cutoff));
+  }
+  if (period === "month") {
+    const cutoff = startOfMonth(now);
+    return orders.filter((o) => isAfter(new Date(o.createdAt), cutoff));
+  }
+  return orders;
+}
+
+type KpiKey = "overdue" | "deadline" | "problems" | "done";
+
+interface KpiCardProps {
+  color: "red" | "orange" | "yellow" | "green";
+  value: number;
+  title: string;
+  subtitle: string;
+  kpiKey: KpiKey;
+  active: KpiKey | null;
+  onToggle: (k: KpiKey) => void;
+  children: React.ReactNode;
+}
+
+const BORDER_COLOR: Record<string, string> = {
+  red: "border-t-red-400",
+  orange: "border-t-orange-400",
+  yellow: "border-t-yellow-400",
+  green: "border-t-green-400",
+};
+
+const VALUE_COLOR: Record<string, string> = {
+  red: "text-foreground",
+  orange: "text-foreground",
+  yellow: "text-foreground",
+  green: "text-foreground",
+};
+
+function KpiCard({ color, value, title, subtitle, kpiKey, active, onToggle, children }: KpiCardProps) {
+  const isOpen = active === kpiKey;
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => onToggle(kpiKey)}
+        className={`w-full text-left rounded-xl border border-t-[3px] bg-card ${
+          BORDER_COLOR[color]
+        } p-4 transition-shadow hover:shadow-md flex items-start justify-between gap-2`}
+      >
+        <div>
+          <p className={`text-3xl font-bold leading-none mb-1 ${VALUE_COLOR[color]}`}>{value}</p>
+          <p className="text-sm font-semibold">{title}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
+        </div>
+        <ChevronRight
+          className={`h-4 w-4 text-muted-foreground shrink-0 mt-1 transition-transform ${
+            isOpen ? "rotate-90" : ""
+          }`}
+        />
+      </button>
+      {isOpen && (
+        <div className="mt-1 rounded-xl border bg-card divide-y">
+          {value === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Tidak ada data</p>
+          ) : (
+            children
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BoardPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [period, setPeriod] = useState<Period>("month");
+  const [activeKpi, setActiveKpi] = useState<KpiKey | null>(null);
+  const [userName, setUserName] = useState("Admin");
 
   useEffect(() => {
     fetch("/api/board")
       .then((r) => r.json())
       .then((j) => { if (j.ok) setData(j.data); })
       .finally(() => setLoading(false));
+    fetch("/api/me")
+      .then((r) => r.json())
+      .then((j) => { if (j.ok && j.data?.name) setUserName(j.data.name.split(" ")[0]); })
+      .catch(() => {});
   }, []);
 
+  const toggleKpi = useCallback((k: KpiKey) => {
+    setActiveKpi((prev) => (prev === k ? null : k));
+  }, []);
+
+  const filtered = useMemo(() => {
+    if (!data) return null;
+    const { orders } = data;
+    const fo = filterByPeriod(orders, period);
+    const now = new Date();
+
+    const overdue = fo.filter((o: any) => {
+      if (!o.dueDate || o.status === "DONE") return false;
+      return isPast(new Date(o.dueDate)) && !isToday(new Date(o.dueDate));
+    });
+
+    const deadline = fo.filter((o: any) => {
+      if (!o.dueDate || o.status === "DONE") return false;
+      const d = new Date(o.dueDate);
+      const days = differenceInDays(d, now);
+      return !isPast(d) && days <= 3;
+    });
+
+    const allProblems = fo.flatMap((o: any) =>
+      (o.items ?? []).flatMap((i: any) =>
+        (i.problems ?? []).filter((p: any) => !p.isResolved).map((p: any) => ({ ...p, _poId: o.id, _poNum: o.internalPoNumber, _client: o.client?.name, _itemName: i.name }))
+      )
+    );
+
+    const done = fo.filter((o: any) => o.status === "DONE");
+    const total = fo.filter((o: any) => o.status !== "DONE");
+
+    // Completion rate vs prev period (rough: done / total in period)
+    const completionRate = fo.length ? Math.round((done.length / fo.length) * 100) : 0;
+
+    // Avg overdue delay in days
+    const overdueDelays = overdue.map((o: any) =>
+      Math.abs(differenceInDays(new Date(o.dueDate), now))
+    );
+    const avgDelay = overdueDelays.length
+      ? Math.round(overdueDelays.reduce((a: number, b: number) => a + b, 0) / overdueDelays.length)
+      : 0;
+
+    // Worst overdue in hours
+    const worstHours = overdue.length
+      ? Math.max(
+          ...overdue.map((o: any) =>
+            Math.abs(differenceInHours(new Date(o.dueDate), now))
+          )
+        )
+      : 0;
+
+    return { overdue, deadline, allProblems, done, total, completionRate, avgDelay, worstHours };
+  }, [data, period]);
+
   if (loading) {
-    return <div className="space-y-3">{[1, 2, 3, 4].map((i) => <div key={i} className="h-20 rounded-xl bg-muted animate-pulse" />)}</div>;
+    return (
+      <div className="space-y-4">
+        <div className="h-16 rounded-xl bg-muted animate-pulse" />
+        <div className="h-8 rounded-xl bg-muted animate-pulse" />
+        <div className="grid grid-cols-2 gap-3">
+          {[1, 2, 3, 4].map((i) => <div key={i} className="h-28 rounded-xl bg-muted animate-pulse" />)}
+        </div>
+      </div>
+    );
   }
-  if (!data) {
+
+  if (!data || !filtered) {
     return <div className="py-16 text-center text-sm text-muted-foreground">Gagal memuat board.</div>;
   }
 
-  const { orders, overdue, active, problems, bottleneck } = data;
-  const totalOrders = orders.length;
+  const { overdue, deadline, allProblems, done, completionRate, avgDelay, worstHours } = filtered;
 
-  // Delivery risk: POs due in ≤3 days that are not done
-  const riskPos = active.filter((o: any) => {
-    if (!o.dueDate) return false;
-    const d = new Date(o.dueDate);
-    const days = differenceInDays(d, new Date());
-    return days >= 0 && days <= 3;
-  });
-
-  const bottleneckEntries = Object.entries(bottleneck as Record<string, { name: string; count: number }>)
-    .sort((a, b) => b[1].count - a[1].count);
+  const PERIODS: { key: Period; label: string }[] = [
+    { key: "month", label: "Bulan Ini" },
+    { key: "7d", label: "7 Hari" },
+    { key: "all", label: "Semua" },
+  ];
 
   return (
-    <div className="space-y-5 pb-8">
-      {/* KPI Row */}
-      <div className="grid grid-cols-3 gap-2">
-        <Card className="p-3 text-center">
-          <p className="text-2xl font-bold">{active.length}</p>
-          <p className="text-xs text-muted-foreground">PO Aktif</p>
-        </Card>
-        <Card className="p-3 text-center">
-          <p className="text-2xl font-bold text-red-500">{overdue.length}</p>
-          <p className="text-xs text-muted-foreground">Terlambat</p>
-        </Card>
-        <Card className="p-3 text-center">
-          <p className="text-2xl font-bold text-orange-500">{problems.length}</p>
-          <p className="text-xs text-muted-foreground">Masalah</p>
-        </Card>
+    <div className="space-y-4 pb-8">
+      {/* ---- Header ---- */}
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs text-muted-foreground">{greeting()}, {userName}</p>
+          <h1 className="text-2xl font-bold leading-tight">Dashboard</h1>
+        </div>
+        <div className="text-right">
+          <p className="text-2xl font-bold text-red-500">{completionRate}%</p>
+          <p className="text-[11px] text-muted-foreground">{completionRate}% vs periode lalu</p>
+        </div>
       </div>
 
-      {/* Delivery risk */}
-      {riskPos.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold flex items-center gap-1.5">
-            <AlertTriangle className="h-4 w-4 text-orange-500" />Risiko Pengiriman ({riskPos.length})
-          </h3>
-          {riskPos.map((po: any) => {
-            const d = new Date(po.dueDate);
-            const days = differenceInDays(d, new Date());
+      {/* ---- Period tabs ---- */}
+      <div className="flex rounded-xl bg-muted p-1 gap-1">
+        {PERIODS.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setPeriod(key)}
+            className={`flex-1 rounded-lg py-1.5 text-sm font-medium transition-colors ${
+              period === key
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ---- KPI 2x2 grid ---- */}
+      <div className="grid grid-cols-2 gap-3">
+        <KpiCard
+          color="red"
+          value={overdue.length}
+          title="Terlambat"
+          subtitle="PO melewati deadline"
+          kpiKey="overdue"
+          active={activeKpi}
+          onToggle={toggleKpi}
+        >
+          {overdue.map((po: any) => (
+            <Link key={po.id} href={`/po/${po.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{po.internalPoNumber}</p>
+                <p className="text-xs text-muted-foreground truncate">{po.client?.name}</p>
+              </div>
+              <span className="text-xs text-red-500 font-medium shrink-0 ml-2">
+                {Math.abs(differenceInDays(new Date(po.dueDate), new Date()))}h terlambat
+              </span>
+            </Link>
+          ))}
+        </KpiCard>
+
+        <KpiCard
+          color="orange"
+          value={deadline.length}
+          title="Deadline Dekat"
+          subtitle="≤ 3 hari lagi"
+          kpiKey="deadline"
+          active={activeKpi}
+          onToggle={toggleKpi}
+        >
+          {deadline.map((po: any) => {
+            const days = differenceInDays(new Date(po.dueDate), new Date());
             return (
-              <Link key={po.id} href={`/po/${po.id}`}>
-                <Card className="p-3 flex items-center justify-between hover:shadow-md transition-shadow border-orange-200">
-                  <div>
-                    <p className="font-medium text-sm">{po.internalPoNumber}</p>
-                    <p className="text-xs text-muted-foreground">{po.client?.name}</p>
-                  </div>
-                  <span className="text-xs text-orange-500 font-medium">
-                    {isToday(d) ? "Hari ini" : `${days} hari lagi`}
-                  </span>
-                </Card>
+              <Link key={po.id} href={`/po/${po.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">{po.internalPoNumber}</p>
+                  <p className="text-xs text-muted-foreground truncate">{po.client?.name}</p>
+                </div>
+                <span className="text-xs text-orange-500 font-medium shrink-0 ml-2">
+                  {isToday(new Date(po.dueDate)) ? "Hari ini" : isTomorrow(new Date(po.dueDate)) ? "Besok" : `${days} hari`}
+                </span>
               </Link>
             );
           })}
-        </div>
-      )}
+        </KpiCard>
 
-      {/* Overdue */}
-      {overdue.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold flex items-center gap-1.5">
-            <Clock className="h-4 w-4 text-red-500" />PO Terlambat ({overdue.length})
-          </h3>
-          {overdue.map((po: any) => (
-            <Link key={po.id} href={`/po/${po.id}`}>
-              <Card className="p-3 flex items-center justify-between hover:shadow-md transition-shadow border-red-200">
-                <div>
-                  <p className="font-medium text-sm">{po.internalPoNumber}</p>
-                  <p className="text-xs text-muted-foreground">{po.client?.name}</p>
-                </div>
-                <span className="text-xs text-red-500 font-medium">
-                  {formatDistanceToNow(new Date(po.dueDate), { locale: idLocale, addSuffix: false })} lalu
-                </span>
-              </Card>
-            </Link>
-          ))}
-        </div>
-      )}
-
-      {/* Bottleneck */}
-      {bottleneckEntries.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold">Bottleneck Departemen</h3>
-          <Card className="divide-y">
-            {bottleneckEntries.map(([id, { name, count }]) => (
-              <div key={id} className="flex items-center justify-between px-4 py-2.5">
-                <span className="text-sm">{name}</span>
-                <Badge variant="secondary" className="text-xs">{count} item aktif</Badge>
+        <KpiCard
+          color="yellow"
+          value={allProblems.length}
+          title="Masalah Terbuka"
+          subtitle="Belum terselesaikan"
+          kpiKey="problems"
+          active={activeKpi}
+          onToggle={toggleKpi}
+        >
+          {allProblems.map((p: any) => (
+            <Link key={p.id} href={`/po/${p._poId}`} className="flex items-start justify-between px-4 py-3 hover:bg-muted/50 transition-colors gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{p._itemName}</p>
+                <p className="text-xs text-muted-foreground truncate">{p._poNum} · {p._client}</p>
+                <p className="text-xs text-orange-500 mt-0.5">{PROBLEM_LABEL[p.category] || p.category}</p>
               </div>
-            ))}
-          </Card>
-        </div>
-      )}
-
-      {/* Active problems */}
-      {problems.length > 0 && (
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold flex items-center gap-1.5">
-            <AlertCircle className="h-4 w-4 text-orange-500" />Masalah Aktif ({problems.length})
-          </h3>
-          {problems.map((p: any) => (
-            <Link key={p.id} href={`/po/${p.item?.productionOrder ? "" : ""}`}>
-              <Card className="p-3 space-y-1 hover:shadow-md transition-shadow">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium truncate">{p.item?.name}</p>
-                  <Badge variant="secondary" className="text-xs shrink-0">
-                    {p.item?.productionOrder?.internalPoNumber}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground">{PROBLEM_LABEL[p.category] || p.category}</p>
-                {p.note && <p className="text-xs text-muted-foreground/70 italic">{p.note}</p>}
-              </Card>
+              <AlertTriangle className="h-4 w-4 text-orange-400 shrink-0 mt-0.5" />
             </Link>
           ))}
+        </KpiCard>
+
+        <KpiCard
+          color="green"
+          value={done.length}
+          title="Selesai"
+          subtitle={period === "month" ? "Bulan ini" : period === "7d" ? "7 hari ini" : "Semua waktu"}
+          kpiKey="done"
+          active={activeKpi}
+          onToggle={toggleKpi}
+        >
+          {done.map((po: any) => (
+            <Link key={po.id} href={`/po/${po.id}`} className="flex items-center justify-between px-4 py-3 hover:bg-muted/50 transition-colors">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{po.internalPoNumber}</p>
+                <p className="text-xs text-muted-foreground truncate">{po.client?.name}</p>
+              </div>
+              <span className="text-xs text-green-500 font-medium shrink-0 ml-2">Selesai</span>
+            </Link>
+          ))}
+        </KpiCard>
+      </div>
+
+      {/* ---- Summary bar ---- */}
+      <div className="rounded-xl border bg-card px-4 py-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="h-9 w-9 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+            <Clock className="h-4.5 w-4.5 text-red-500" />
+          </div>
+          <div>
+            <p className="text-[11px] text-muted-foreground leading-none mb-0.5">Rata-rata Keterlambatan</p>
+            <p className="text-lg font-bold leading-none">
+              {avgDelay} <span className="text-sm font-normal text-muted-foreground">hari</span>
+            </p>
+          </div>
         </div>
-      )}
-
-      {/* All active POs */}
-      <div className="space-y-2">
-        <h3 className="text-sm font-semibold flex items-center gap-1.5">
-          <TrendingUp className="h-4 w-4" />Semua PO Aktif ({active.length})
-        </h3>
-        {active.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-8 text-center">Tidak ada PO aktif.</p>
-        ) : (
-          active.map((po: any) => {
-            const dueDate = po.dueDate ? new Date(po.dueDate) : null;
-            const overduePo = dueDate && isPast(dueDate);
-            const totalItems = po.items.length;
-            const doneItems = po.items.filter((i: any) => i.status === "DONE").length;
-            const itemProblems = po.items.flatMap((i: any) => i.problems ?? []);
-
-            return (
-              <Link key={po.id} href={`/po/${po.id}`}>
-                <Card className="p-3 hover:shadow-md transition-shadow">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="font-medium text-sm truncate">{po.internalPoNumber}</p>
-                      <p className="text-xs text-muted-foreground">{po.client?.name}</p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {itemProblems.length > 0 && (
-                        <Badge variant="destructive" className="text-xs gap-1">
-                          <AlertCircle className="h-3 w-3" />{itemProblems.length}
-                        </Badge>
-                      )}
-                      {dueDate && (
-                        <span className={`text-xs ${overduePo ? "text-red-500" : "text-muted-foreground"}`}>
-                          {overduePo
-                            ? formatDistanceToNow(dueDate, { locale: idLocale, addSuffix: false }) + " lalu"
-                            : differenceInDays(dueDate, new Date()) + " hari"}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full"
-                      style={{ width: `${totalItems ? (doneItems / totalItems) * 100 : 0}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-1">{doneItems}/{totalItems} item selesai</p>
-                </Card>
-              </Link>
-            );
-          })
-        )}
+        <div className="text-center">
+          <p className="text-[11px] text-muted-foreground mb-0.5">PO Terlambat</p>
+          <p className="text-lg font-bold">{overdue.length}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-[11px] text-muted-foreground mb-0.5">Terburuk</p>
+          <p className="text-lg font-bold text-red-500">{worstHours}h</p>
+        </div>
       </div>
     </div>
   );
