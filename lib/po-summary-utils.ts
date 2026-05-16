@@ -68,6 +68,6 @@ export function getActiveStage(progress: ProgressWithDept[]): ProgressWithDept |
 
   const notStarted = progress
     .filter((p) => p.progressValue === 0)
-    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    .sort((a, b) => (a.department.stageOrder ?? 0) - (b.department.stageOrder ?? 0));
   return notStarted[0] ?? null;
 }
