@@ -9,6 +9,7 @@ import {
   ItemSource,
   ItemStatus,
   PrismaClient,
+  Prisma,
   ProblemCategory,
   PurchasingMilestone,
   ReworkReason,
@@ -720,9 +721,9 @@ async function main() {
     action: typeof AuditAction[keyof typeof AuditAction];
     entityType: string;
     entityId: string;
-    fromValue?: Record<string, unknown>;
-    toValue?: Record<string, unknown>;
-    metadata?: Record<string, unknown>;
+    fromValue?: Prisma.InputJsonValue;
+    toValue?: Prisma.InputJsonValue;
+    metadata?: Prisma.InputJsonValue;
   }) {
     return prisma.auditLog.create({
       data: {
@@ -732,9 +733,9 @@ async function main() {
         action: params.action,
         entityType: params.entityType,
         entityId: params.entityId,
-        fromValue: params.fromValue,
-        toValue: params.toValue,
-        metadata: params.metadata,
+        fromValue: params.fromValue as Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined,
+        toValue: params.toValue as Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined,
+        metadata: params.metadata as Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue | undefined,
       },
     });
   }
