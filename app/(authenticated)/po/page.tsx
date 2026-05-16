@@ -1,46 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import Link from "next/link";
-import {
-  differenceInHours,
-  differenceInDays,
-  isPast,
-  isToday,
-  isTomorrow,
-  format,
-} from "date-fns";
-import { id as idLocale } from "date-fns/locale";
-import { Plus, AlertTriangle, MessageSquare } from "lucide-react";
+import { differenceInHours, differenceInDays, isPast, isToday } from "date-fns";
+import { Plus, Search, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const STATUS_LABEL: Record<string, string> = {
-  DRAFTING: "Gambar",
-  PURCHASING: "Pembelian",
-  PRODUCTION: "Produksi",
+const STAGE_ABBR: Record<string, string> = {
+  DRAFTING: "DRFT",
+  PURCHASING: "PURCH",
+  PRODUCTION: "MACH",
   QC: "QC",
-  DELIVERY: "Pengiriman",
-  DONE: "Selesai",
+  DELIVERY: "DELIV",
+  DONE: "DONE",
 };
 
-const PROBLEM_LABEL: Record<string, string> = {
-  MATERIAL_NOT_ARRIVED: "Material belum tiba",
-  MATERIAL_MISMATCH: "Material tidak sesuai",
-  MACHINE_TOOL_FAILURE: "Mesin/alat rusak",
-  OPERATOR_UNAVAILABLE: "Operator tidak ada",
-  DRAWING_SPEC_UNCLEAR: "Gambar kurang jelas",
-  DRAWING_REDRAW: "Gambar perlu diulang",
-  PRODUCTION_BEFORE_PURCHASING_COMPLETE: "Produksi sebelum purchasing selesai",
-  OTHER: "Lainnya",
+const STAGE_DOT_COLOR: Record<string, string> = {
+  DRAFTING: "bg-blue-400",
+  PURCHASING: "bg-green-400",
+  PRODUCTION: "bg-orange-400",
+  QC: "bg-purple-400",
+  DELIVERY: "bg-teal-400",
+  DONE: "bg-gray-300",
 };
 
-// Derive the "representative" item for the card heading
-// (first non-DONE item, or last item if all done)
-function leadItem(items: any[]) {
-  return items.find((i) => i.status !== "DONE") ?? items[items.length - 1];
-}
+type FilterTab = "all" | "active" | "done" | "urgent";
 
-// Aggregate progress across all items (average of item progress values)
 function aggregateProgress(items: any[]) {
   if (!items.length) return 0;
   const sum = items.reduce((acc: number, item: any) => {
@@ -50,152 +35,103 @@ function aggregateProgress(items: any[]) {
   return Math.round(sum / items.length);
 }
 
-function POCard({ po }: { po: any }) {
+function POListCard({ po }: { po: any }) {
   const items: any[] = po.items ?? [];
-  const lead = leadItem(items);
+  const leadItem = items.find((i) => i.status !== "DONE") ?? items[0];
   const extraCount = items.length - 1;
   const progress = aggregateProgress(items);
+  const activeProblems = items.flatMap((i: any) => (i.problems ?? []).filter((p: any) => !p.isResolved));
 
-  // Active problems across all items
-  const activeProblems = items.flatMap((i: any) =>
-    (i.problems ?? []).filter((p: any) => !p.isResolved)
-  );
-  const firstProblem = activeProblems[0];
-
-  // Last note (latest progressLog note across items)
-  const allNotes = items
-    .flatMap((i: any) => i.progressLogs ?? [])
-    .filter((l: any) => l.note)
-    .sort(
-      (a: any, b: any) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    );
-  const lastNote = allNotes[0]?.note ?? null;
-
-  // Due / overdue calculation
   const dueDate = po.dueDate ? new Date(po.dueDate) : null;
   const now = new Date();
-  const hoursLate = dueDate && isPast(dueDate) && !isToday(dueDate)
-    ? Math.abs(differenceInHours(now, dueDate))
-    : null;
+  const isOverdue = dueDate && isPast(dueDate) && !isToday(dueDate);
+  const hoursLate = isOverdue ? Math.abs(differenceInHours(now, dueDate!)) : null;
+  const daysLate = isOverdue ? Math.abs(differenceInDays(now, dueDate!)) : null;
 
-  const isUrgent =
-    po.isUrgent ||
-    (dueDate && (isPast(dueDate) || isToday(dueDate) || isTomorrow(dueDate)));
-  const hasIssue = activeProblems.length > 0 || hoursLate !== null;
+  const isDone = items.every((i) => i.status === "DONE");
+  const statusLabel = isDone ? "SELESAI" : isOverdue ? "TERLAMBAT" : "AKTIF";
+  const statusClass = isDone
+    ? "text-green-600"
+    : isOverdue
+    ? "text-red-500"
+    : "text-blue-500";
 
-  // Bar color: red if overdue/problem, blue otherwise
-  const barColor = hasIssue ? "bg-orange-500" : "bg-blue-500";
+  // Unique active stages
+  const activeStages = [...new Set(items.filter((i) => i.status !== "DONE").map((i) => i.status))];
+  const allStages = ["DRAFTING", "PURCHASING", "PRODUCTION", "QC", "DELIVERY"];
+  const stagesToShow = isDone ? [] : allStages.filter((s) => activeStages.includes(s));
 
-  // Date label (left side of date row)
-  const dateLabel = dueDate
-    ? format(dueDate, "d MMM yyyy", { locale: idLocale })
-    : null;
-
-  // Stage of lead item
-  const stageLabel = lead ? STATUS_LABEL[lead.status] ?? lead.status : "";
+  const barColor = isOverdue ? "bg-red-500" : isDone ? "bg-green-500" : "bg-blue-500";
 
   return (
     <Link href={`/po/${po.id}`} className="block">
-      <div
-        className={`relative rounded-xl bg-card border transition-shadow hover:shadow-md ${
-          hasIssue
-            ? "border-l-[3px] border-l-red-400 border-border"
-            : "border-border"
-        }`}
-      >
-        <div className="px-4 pt-4 pb-3 space-y-2.5">
-          {/* — Title row — */}
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0 flex-1">
-              <span className="font-semibold text-[15px] leading-tight truncate">
-                {lead?.name ?? po.internalPoNumber}
+      <div className="bg-card border border-border rounded-xl px-4 pt-4 pb-3 space-y-2 hover:shadow-md transition-shadow">
+        {/* Row 1: title + status */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-semibold text-[15px] leading-tight">
+                {leadItem?.name ?? po.internalPoNumber}
               </span>
               {extraCount > 0 && (
-                <span className="shrink-0 text-[11px] font-medium text-muted-foreground border border-border rounded-full px-1.5 py-0.5 leading-none">
-                  +{extraCount} lagi
-                </span>
-              )}
-              {isUrgent && (
-                <span className="shrink-0 text-[10px] font-bold bg-red-100 text-red-600 rounded px-1.5 py-0.5 leading-none uppercase tracking-wide">
-                  URGENT
-                </span>
+                <span className="text-xs text-muted-foreground">+ {extraCount} item lainnya</span>
               )}
             </div>
           </div>
+          <span className={`text-xs font-bold shrink-0 ${statusClass}`}>{statusLabel}</span>
+        </div>
 
-          {/* — Client · PO number — */}
-          <p className="text-xs text-muted-foreground -mt-1">
-            {po.client?.name}
-            {po.client?.name && po.internalPoNumber && " · "}
-            {po.internalPoNumber}
-          </p>
-
-          {/* — Progress — */}
-          <div className="space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-xs text-muted-foreground">Progress</span>
-              <span
-                className={`text-xs font-semibold ${
-                  hasIssue ? "text-orange-500" : "text-blue-500"
-                }`}
-              >
-                {progress}%
-              </span>
-            </div>
-            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${barColor}`}
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-          </div>
-
-          {/* — Date row — */}
-          {(dateLabel || hoursLate !== null) && (
-            <div className="flex items-center justify-between">
-              {dateLabel && (
-                <span className="text-xs text-muted-foreground">{dateLabel}</span>
-              )}
-              {hoursLate !== null && (
-                <span className="text-xs font-semibold text-red-500">
-                  {hoursLate}h terlambat
-                </span>
-              )}
-            </div>
+        {/* Row 2: PO num · client · delay */}
+        <div className="flex items-center gap-1.5 flex-wrap text-xs">
+          <span className="text-muted-foreground">{po.internalPoNumber}</span>
+          {po.client?.name && (
+            <>
+              <span className="text-muted-foreground">·</span>
+              <span className="text-muted-foreground">{po.client.name}</span>
+            </>
           )}
-
-          {/* — Active problem line — */}
-          {firstProblem && (
-            <div className="flex items-center gap-1.5">
-              <AlertTriangle className="h-3.5 w-3.5 text-orange-400 shrink-0" />
-              <span className="text-xs text-orange-500 font-medium">
-                {PROBLEM_LABEL[firstProblem.category] ?? firstProblem.category}
-                {firstProblem.stoppedDays
-                  ? ` terhenti ${firstProblem.stoppedDays} hari`
-                  : ""}
-              </span>
-            </div>
-          )}
-
-          {/* — Last note — */}
-          {lastNote && (
-            <div className="flex items-start gap-1.5">
-              <MessageSquare className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 mt-0.5" />
-              <span className="text-xs text-muted-foreground italic truncate">
-                &ldquo;{lastNote}&rdquo;
-              </span>
-            </div>
-          )}
-
-          {/* — Est. selesai — */}
-          {dueDate && (
-            <p className="text-xs text-muted-foreground/70">
-              Est. selesai:{" "}
-              {format(dueDate, "dd MMM yyyy", { locale: idLocale })}
-            </p>
+          {daysLate !== null && daysLate > 0 && (
+            <span className="font-semibold text-red-500">{daysLate} hari terlambat</span>
           )}
         </div>
+
+        {/* Row 3: Progress */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-muted-foreground">Progress</span>
+            <span className={`text-xs font-semibold ${isOverdue ? "text-red-500" : "text-blue-500"}`}>
+              {progress}%
+            </span>
+          </div>
+          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${barColor}`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Row 4: Stage dot pills */}
+        {stagesToShow.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {stagesToShow.map((s) => (
+              <span key={s} className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                <span className={`h-2 w-2 rounded-full ${STAGE_DOT_COLOR[s]}`} />
+                {STAGE_ABBR[s]}
+              </span>
+            ))}
+          </div>
+        )}
+
+        {/* Row 5: Problem warning */}
+        {activeProblems.length > 0 && (
+          <div className="flex items-center gap-2 rounded-lg bg-yellow-50 border border-yellow-200 px-3 py-2">
+            <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+            <span className="text-xs font-medium text-yellow-700">
+              {activeProblems.length} masalah terbuka
+            </span>
+          </div>
+        )}
       </div>
     </Link>
   );
@@ -204,6 +140,8 @@ function POCard({ po }: { po: any }) {
 export default function POPage() {
   const [pos, setPos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [tab, setTab] = useState<FilterTab>("all");
 
   useEffect(() => {
     fetch("/api/po")
@@ -212,45 +150,97 @@ export default function POPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const filtered = useMemo(() => {
+    let list = pos;
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      list = list.filter(
+        (po) =>
+          po.internalPoNumber?.toLowerCase().includes(q) ||
+          po.client?.name?.toLowerCase().includes(q)
+      );
+    }
+    if (tab === "active") list = list.filter((po) => !po.items.every((i: any) => i.status === "DONE"));
+    if (tab === "done") list = list.filter((po) => po.items.every((i: any) => i.status === "DONE"));
+    if (tab === "urgent") list = list.filter((po) => po.isUrgent || (po.dueDate && isPast(new Date(po.dueDate))));
+    return list;
+  }, [pos, query, tab]);
+
+  const TABS: { key: FilterTab; label: string }[] = [
+    { key: "all", label: "Semua" },
+    { key: "active", label: "Aktif" },
+    { key: "done", label: "Selesai" },
+    { key: "urgent", label: "Urgent" },
+  ];
+
   if (loading) {
     return (
-      <div className="space-y-3">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="h-[148px] rounded-xl bg-muted animate-pulse" />
-        ))}
-      </div>
-    );
-  }
-
-  if (!pos.length) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 gap-4 text-center">
-        <p className="text-muted-foreground text-sm">Belum ada PO</p>
-        <Button asChild>
-          <Link href="/po/new">
-            <Plus className="h-4 w-4 mr-1" />Buat PO Baru
-          </Link>
-        </Button>
+      <div className="space-y-4">
+        <div className="h-10 rounded-xl bg-muted animate-pulse" />
+        <div className="flex gap-2">
+          {[1, 2, 3, 4].map((i) => <div key={i} className="h-8 w-16 rounded-full bg-muted animate-pulse" />)}
+        </div>
+        <div className="h-12 rounded-xl bg-muted animate-pulse" />
+        {[1, 2, 3].map((i) => <div key={i} className="h-36 rounded-xl bg-muted animate-pulse" />)}
       </div>
     );
   }
 
   return (
     <div className="space-y-3 pb-8">
-      <div className="flex items-center justify-between pb-1">
-        <h2 className="text-base font-semibold">
-          Production Orders ({pos.length})
-        </h2>
-        <Button asChild size="sm">
-          <Link href="/po/new">
-            <Plus className="h-4 w-4 mr-1" />Baru
-          </Link>
-        </Button>
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <input
+          type="text"
+          placeholder="Cari PO number, client..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="w-full h-10 rounded-xl border border-input bg-background pl-9 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+        />
       </div>
 
-      {pos.map((po: any) => (
-        <POCard key={po.id} po={po} />
-      ))}
+      {/* Filter tabs */}
+      <div className="flex gap-2">
+        {TABS.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setTab(key)}
+            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+              tab === key
+                ? "bg-foreground text-background"
+                : "border border-border text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* CTA button */}
+      <Link href="/po/new" className="block">
+        <button
+          type="button"
+          className="w-full h-12 rounded-xl bg-foreground text-background font-semibold text-sm flex items-center justify-center gap-2 hover:opacity-90 transition-opacity"
+        >
+          <Plus className="h-4 w-4" />
+          Buat PO Baru
+        </button>
+      </Link>
+
+      {/* List */}
+      {filtered.length === 0 ? (
+        <div className="py-16 text-center">
+          <p className="text-muted-foreground text-sm">
+            {query ? "Tidak ditemukan" : "Belum ada PO"}
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((po) => <POListCard key={po.id} po={po} />)}
+        </div>
+      )}
     </div>
   );
 }
