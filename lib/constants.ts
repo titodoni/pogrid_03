@@ -1,3 +1,4 @@
+// Role home routes — single source of truth
 export const ROLE_HOME_ROUTES: Record<string, string> = {
   ADMIN: "/pos",
   OWNER: "/dashboard",
@@ -12,12 +13,12 @@ export const ROLE_HOME_ROUTES: Record<string, string> = {
   SUPERADMIN: "/superadmin",
 };
 
+// Legacy — kept for backward compat, use NAV_CONFIG from lib/nav-config.ts instead
 export const BOTTOM_NAV_ITEMS: Record<string, Array<{ label: string; href: string; icon: string }>> = {
   ADMIN: [
     { label: "PO", href: "/pos", icon: "clipboard-list" },
     { label: "Board", href: "/board", icon: "layout-grid" },
     { label: "Masalah", href: "/problems", icon: "alert-circle" },
-    { label: "Pengaturan", href: "/settings", icon: "settings" },
     { label: "Profil", href: "/profile", icon: "user" },
   ],
   OWNER: [
