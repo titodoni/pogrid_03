@@ -20,10 +20,10 @@ type NavConfig = {
 export const NAV_CONFIG: Partial<Record<UserRole, NavConfig>> = {
   ADMIN: {
     left: [
-      { label: "PO", href: "/pos", icon: "clipboard-list" },
+      { label: "PO", href: "/po", icon: "clipboard-list" },
       { label: "Board", href: "/board", icon: "layout-grid" },
     ],
-    fab: { label: "PO Baru", href: "/pos/new" },
+    fab: { label: "PO Baru", href: "/po/new" },
     right: [
       { label: "Masalah", href: "/problems", icon: "alert-circle" },
       { label: "Profil", href: "/profile", icon: "user" },
@@ -31,33 +31,34 @@ export const NAV_CONFIG: Partial<Record<UserRole, NavConfig>> = {
   },
   OWNER: {
     left: [
-      { label: "Dashboard", href: "/dashboard", icon: "bar-chart-3" },
+      { label: "Board", href: "/board", icon: "layout-grid" },
+      { label: "PO", href: "/po", icon: "clipboard-list" },
     ],
-    fab: { label: "Board", href: "/board" },
     right: [
       { label: "Profil", href: "/profile", icon: "user" },
     ],
   },
   MANAGER: {
     left: [
-      { label: "Dashboard", href: "/dashboard", icon: "bar-chart-3" },
+      { label: "Board", href: "/board", icon: "layout-grid" },
+      { label: "PO", href: "/po", icon: "clipboard-list" },
     ],
-    fab: { label: "Board", href: "/board" },
     right: [
       { label: "Profil", href: "/profile", icon: "user" },
     ],
   },
   SALES: {
     left: [
-      { label: "Dashboard", href: "/dashboard", icon: "bar-chart-3" },
+      { label: "Board", href: "/board", icon: "layout-grid" },
+      { label: "PO", href: "/po", icon: "clipboard-list" },
     ],
-    fab: { label: "Board", href: "/board" },
     right: [
       { label: "Profil", href: "/profile", icon: "user" },
     ],
   },
   DRAFTER: {
     left: [
+      { label: "PO", href: "/po", icon: "clipboard-list" },
       { label: "Masalah", href: "/problems", icon: "alert-circle" },
     ],
     fab: { label: "Tugas", href: "/tasks" },
@@ -67,6 +68,7 @@ export const NAV_CONFIG: Partial<Record<UserRole, NavConfig>> = {
   },
   PURCHASING: {
     left: [
+      { label: "PO", href: "/po", icon: "clipboard-list" },
       { label: "Masalah", href: "/problems", icon: "alert-circle" },
     ],
     fab: { label: "Tugas", href: "/tasks" },
@@ -76,6 +78,7 @@ export const NAV_CONFIG: Partial<Record<UserRole, NavConfig>> = {
   },
   OPERATOR: {
     left: [
+      { label: "PO", href: "/po", icon: "clipboard-list" },
       { label: "Masalah", href: "/problems", icon: "alert-circle" },
     ],
     fab: { label: "Tugas", href: "/tasks" },
@@ -85,6 +88,7 @@ export const NAV_CONFIG: Partial<Record<UserRole, NavConfig>> = {
   },
   QC: {
     left: [
+      { label: "PO", href: "/po", icon: "clipboard-list" },
       { label: "Masalah", href: "/problems", icon: "alert-circle" },
     ],
     fab: { label: "Tugas", href: "/tasks" },
@@ -94,6 +98,7 @@ export const NAV_CONFIG: Partial<Record<UserRole, NavConfig>> = {
   },
   DELIVERY: {
     left: [
+      { label: "PO", href: "/po", icon: "clipboard-list" },
       { label: "Masalah", href: "/problems", icon: "alert-circle" },
     ],
     fab: { label: "Tugas", href: "/tasks" },
@@ -104,8 +109,8 @@ export const NAV_CONFIG: Partial<Record<UserRole, NavConfig>> = {
   FINANCE: {
     left: [
       { label: "Finance", href: "/finance", icon: "receipt" },
+      { label: "PO", href: "/po", icon: "clipboard-list" },
     ],
-    fab: { label: "Board", href: "/board" },
     right: [
       { label: "Profil", href: "/profile", icon: "user" },
     ],
@@ -113,10 +118,10 @@ export const NAV_CONFIG: Partial<Record<UserRole, NavConfig>> = {
 };
 
 export const ROLE_HOME_ROUTES: Partial<Record<UserRole, string>> = {
-  ADMIN: "/pos",
-  OWNER: "/dashboard",
-  MANAGER: "/dashboard",
-  SALES: "/dashboard",
+  ADMIN: "/po",
+  OWNER: "/board",
+  MANAGER: "/board",
+  SALES: "/board",
   FINANCE: "/finance",
   DRAFTER: "/tasks",
   PURCHASING: "/tasks",

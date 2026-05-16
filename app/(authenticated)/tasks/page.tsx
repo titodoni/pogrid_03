@@ -1,8 +1,7 @@
 "use client";
 
-
 import { useEffect, useState, useCallback } from "react";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Flag } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +17,8 @@ const PROBLEM_LABEL: Record<string, string> = {
   PRODUCTION_BEFORE_PURCHASING_COMPLETE: "Produksi sebelum purchasing selesai",
   OTHER: "Lainnya",
 };
+
+const PROBLEM_CATEGORIES = Object.entries(PROBLEM_LABEL);
 
 const STATUS_LABEL: Record<string, string> = {
   DRAFTING: "Gambar", PURCHASING: "Pembelian", PRODUCTION: "Produksi",
@@ -45,10 +46,15 @@ function ProgressButton({ value, onClick }: { value: number; onClick: (v: number
   );
 }
 
+type ReportState = { itemId: string; itemName: string } | null;
+
 export default function TasksPage() {
   const [items, setItems] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [reporting, setReporting] = useState<ReportState>(null);
+  const [reportForm, setReportForm] = useState({ category: "", note: "" });
+  const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -82,6 +88,79 @@ export default function TasksPage() {
       setUpdating(null);
     }
   }, [load]);
+
+  const handleReportSubmit = useCallback(async () => {
+    if (!reporting) return;
+    if (!reportForm.category) { toast.error("Pilih kategori masalah."); return; }
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/problems", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId: reporting.itemId, ...reportForm }),
+      });
+      const json = await res.json();
+      if (!json.ok) throw new Error(json.error);
+      toast.success("Masalah dilaporkan.");
+      setReporting(null);
+      setReportForm({ category: "", note: "" });
+      load();
+    } catch (e: any) {
+      toast.error(e.message || "Gagal melaporkan masalah.");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [reporting, reportForm, load]);
+
+  // Report modal
+  if (reporting) {
+    return (
+      <div className="space-y-4 pb-8">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => { setReporting(null); setReportForm({ category: "", note: "" }); }}>
+            ← Kembali
+          </Button>
+        </div>
+        <h2 className="text-base font-semibold">Laporkan Masalah</h2>
+        <p className="text-sm text-muted-foreground">{reporting.itemName}</p>
+
+        <Card className="p-4 space-y-4">
+          <div className="space-y-2">
+            <label className="text-xs font-medium">Kategori *</label>
+            <div className="flex flex-col gap-2">
+              {PROBLEM_CATEGORIES.map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setReportForm((f) => ({ ...f, category: key }))}
+                  className={`text-left text-sm px-3 py-2 rounded-lg border transition-colors ${
+                    reportForm.category === key
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background text-foreground border-border hover:border-primary/50"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs font-medium">Catatan (opsional)</label>
+            <textarea
+              className="w-full min-h-[72px] rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              placeholder="Detail tambahan..."
+              value={reportForm.note}
+              onChange={(e) => setReportForm((f) => ({ ...f, note: e.target.value }))}
+            />
+          </div>
+        </Card>
+
+        <Button className="w-full" size="lg" onClick={handleReportSubmit} disabled={submitting}>
+          {submitting ? "Mengirim..." : "Kirim Laporan"}
+        </Button>
+      </div>
+    );
+  }
 
   if (loading) {
     return <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-32 rounded-xl bg-muted animate-pulse" />)}</div>;
@@ -154,6 +233,21 @@ export default function TasksPage() {
                 ))}
               </div>
             )}
+
+            <div className="pt-1 border-t">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs h-7 text-muted-foreground hover:text-red-500 gap-1 px-2"
+                onClick={() => {
+                  setReporting({ itemId: item.id, itemName: item.name });
+                  setReportForm({ category: "", note: "" });
+                }}
+              >
+                <Flag className="h-3 w-3" />
+                Laporkan masalah
+              </Button>
+            </div>
           </Card>
         );
       })}
